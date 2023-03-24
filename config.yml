@@ -1,0 +1,48 @@
+# Configuration for yolov8 item detection
+project_name: Behavior retail
+item_detection:
+  weight: ./models/weights_ai_action/best.pt
+  categories:
+    - dark_noodles
+    - g7
+    - haohao
+    - modern
+    - nabati
+    - nescafe
+    - oreo
+    - passiona
+  conf: 0.7
+  iou: 0.45
+  agnostic_nms: True
+
+
+# Configuration for human pose estimation
+pose_detection:
+  weight: ./models/person_weight/checkpoint_iter_370000.pth
+  smooth: 1
+
+# Configuration for person tracking
+person_tracking:
+  input_size: (800, 1440)         # input size image in tracker
+  track_thresh: 0.5               # tracking confidence threshold
+  track_buffer: 30                # the frames for keep lost tracks
+  match_thresh: 0.9               # matching threshold for tracking
+  aspect_ratio_thresh: 1.6        # threshold for filtering out boxes of which aspect ratio are above the given value
+  min_box_area: 10                # filter out tiny boxes
+  mot20: False                    # test mot20
+
+# Configuration visualization
+visualization:
+  area: True
+  person: False
+  keypoint: False
+  item: False
+
+
+debug:                  # if save begin record video
+  save_result:  ./runs
+  log_txt: True
+  fourcc: MJPG          # output video codec (verify ffmpeg support)
+  fps: 25
+
+  

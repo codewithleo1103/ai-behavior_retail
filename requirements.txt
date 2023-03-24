@@ -1,0 +1,5 @@
+- r detector/pose_detector/requirements.txt
+# - r detector/ultralytics/requirements.txt
+- r bytetrack/requirements.txt
+ultralytics
+pyyaml
