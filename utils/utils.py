@@ -1,37 +1,30 @@
 import tkinter as tk
 import cv2
+from typing import List
+import numpy as np
+
+# from object import Person
 
 class COLOR: 
-    red = (0, 0, 255)
-    blue = (255, 0, 0)
-    green = (0, 255, 0)
-    yellow = (255, 255, 0)
+    red     = (0, 0, 255)
+    blue    = (255, 0, 0)
+    green   = (0, 255, 0)
+    yellow  = (255, 255, 0)
     fuchsia = (255, 0, 255)
-    pink = (241, 167, 228)
+    pink    = (241, 167, 228)
 
 
-class CLASSES:
-    dark_noodles = {'id': 0, "name":'dark_noodles'}
-    g7           = {'id': 1, "name":'g7'}
-    haohao       = {'id': 2, "name":'haohao'}
-    modern       = {'id': 3, "name":'modern'}
-    nabati       = {'id': 4, "name":'nabati'}
-    nescafe      = {'id': 5, "name":'nescafe'}
-    oreo         = {'id': 6, "name":'oreo'}
-    passiona     = {'id': 7, "name":'passiona'}
-
-
-class AREA:
-    '''
-        - Area coordinates is the ratio of that point on the image to the real coordinates
-        - Coordinate formated ratio: ((tl), (tr), (br), (bl))
-    '''
-    # shelve = ((0.01, 0.14), (0.08, 0.1), (0.29, 0.87), (0.08, 1))
-    selection = ((0.309, 0.0333), (0.421, 0.103), (0.5333, 0.7111), (0.313, 0.6981))
-    # attend = ((0.14, 0.5), (0.4, 0.17), (0.73, 0.33), (0.58, 0.97))
-    payment = ((0.5375, 0.572), (0.751, 0.561), (0.843, 0.929), (0.663, 0.983))
-
-    line_shelve = ((0.378, 0), (0.498, 0.687))
+CLASSES = {
+    -1: 'person',
+    0: 'dark_noodles',
+    1: 'g7',
+    2: 'haohao',
+    3: 'modern',
+    4: 'nabati',
+    5: 'nescafe',
+    6: 'oreo',
+    7: 'passiona',
+}    
 
 
 def get_monitor_size():
@@ -47,3 +40,26 @@ def get_monitor_size():
     height_dpi = height_px/height_in
     return width_px, height_px, width_mm, height_mm, width_in, height_in, width_dpi, height_dpi
 
+
+def convert_boxobject2nparr(objects:List) -> np.array:
+    dets = [[object_.box.tl.x, object_.box.tl.y, object_.box.br.x, object_.box.br.y, object_.conf, object_.id_object] 
+            for object_ in objects]
+    return np.array(dets)
+
+
+def filter_object(out_tracker, min_box_area, aspect_ratio_thresh):
+    tracks = []
+    for t in out_tracker:
+        tlwh = t.tlwh
+        vertical = tlwh[2] / tlwh[3] > aspect_ratio_thresh
+        # print(f"vertical: {vertical}              {tlwh[2] * tlwh[3] > min_box_area}")
+        if tlwh[2] * tlwh[3] > min_box_area and not vertical:
+            tracks.append(t)
+    return tracks
+
+def xywh_to_xyxy(img, bbox):
+    x1, y1, w, h = bbox
+    x2, y2 = x1+w, y1+h
+    x2 = x2 if x2 <= img.shape[1] else img.shape[1]
+    y2 = y2 if y2 <= img.shape[0] else img.shape[0]
+    return x1, y1, x2, y2

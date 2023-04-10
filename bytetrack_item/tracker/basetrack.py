@@ -34,6 +34,7 @@ class BaseTrack(object):
     @staticmethod
     def next_id():
         BaseTrack._count += 1
+        # print(f"BaseTrack._count:  {BaseTrack._count}")
         return BaseTrack._count
 
     def activate(self, *args):

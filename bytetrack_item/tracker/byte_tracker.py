@@ -7,12 +7,12 @@ import torch
 import torch.nn.functional as F
 
 from .kalman_filter import KalmanFilter
-from bytetrack.tracker import matching
+from bytetrack_item.tracker import matching
 from .basetrack import BaseTrack, TrackState
 
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
-    def __init__(self, tlwh, score):
+    def __init__(self, tlwh, score, id_object):
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
@@ -22,6 +22,7 @@ class STrack(BaseTrack):
 
         self.score = score
         self.tracklet_len = 0
+        self.id_object = id_object
 
     def predict(self):
         mean_state = self.mean.copy()
@@ -142,7 +143,7 @@ class STrack(BaseTrack):
         return 'OT_{}_({}-{})'.format(self.track_id, self.start_frame, self.end_frame)
 
 
-class BYTETracker(object):
+class BYTETrackerItem(object):
     def __init__(self, track_thresh=0.5, match_thresh=0.8, track_buffer=30, frame_rate=30, mot20=False):
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
@@ -153,7 +154,7 @@ class BYTETracker(object):
         self.match_thresh = match_thresh
         self.det_thresh = track_thresh + 0.1
         self.mot20 = mot20
-        self.buffer_size = int(frame_rate / 30.0 * track_buffer)
+        self.buffer_size = int(frame_rate/30.0 * track_buffer)
         self.max_time_lost = self.buffer_size
         self.kalman_filter = KalmanFilter()
 
@@ -164,13 +165,14 @@ class BYTETracker(object):
         lost_stracks = []
         removed_stracks = []
 
-        if output_results.shape[1] == 5:
-            scores = output_results[:, 4]
-            bboxes = output_results[:, :4]
-        else:
-            output_results = output_results.cpu().numpy()
-            scores = output_results[:, 4] * output_results[:, 5]
-            bboxes = output_results[:, :4]  # x1y1x2y2
+        # if output_results.shape[1] == 5:
+        scores =     output_results[:, 4]
+        bboxes =     output_results[:, :4]
+        id_objects = output_results[:, 5]
+        # else:
+            # output_results = output_results.cpu().numpy()
+            # scores = output_results[:, 4] * output_results[:, 5]
+            # bboxes = output_results[:, :4]  # x1y1x2y2
         img_h, img_w = img_info[0], img_info[1]
         scale = min(img_size[0] / float(img_h), img_size[1] / float(img_w))
         bboxes /= scale
@@ -187,8 +189,8 @@ class BYTETracker(object):
 
         if len(dets) > 0:
             '''Detections'''
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
-                          (tlbr, s) in zip(dets, scores_keep)]
+            detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s, id_object) for
+                          (tlbr, s, id_object) in zip(dets, scores_keep, id_objects)]
         else:
             detections = []
 

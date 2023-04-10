@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 import math
 import os
+import random
+import copy
 
 class Point:
     def __init__(self, x, y) -> None:
@@ -21,7 +23,7 @@ class Point:
         points = [point1, point2]
         x_coords, y_coords = zip(*points)
         A = np.vstack([x_coords,np.ones(len(x_coords))]).T
-        m, c = np.lstsq(A, y_coords)[0]
+        m, c = np.linalg.lstsq(A, y_coords)[0]
         x_at_line = (self.y - c)//m
         return True if self.x < x_at_line else False
 
@@ -71,8 +73,8 @@ class Box:
 
 
 class Polygon():
-    def __init__(self, points:List[Tuple]) -> None:
-        self.points = [(int(pt[0]), pt[1]) for pt in points]
+    def __init__(self, points:List) -> None:
+        self.points = [(int(pt[0]), int(pt[1])) for pt in points]
     
     def draw_box(self, image:np.array, color:tuple=COLOR.yellow, thickness:int=1, label:str='') -> None:
         '''draw polygon in frame'''
@@ -92,26 +94,23 @@ class Polygon():
 
 
 class Object:
-    def __init__(self, id, id_object, name_object, box:Box, conf) -> None:
-        self.id = id
-        self.id_object = id_object
+    def __init__(self, track_id, id_object, name_object, box:Box, conf) -> None:
+        self.track_id    = track_id
+        self.id_object   = id_object
         self.name_object = name_object
-        self.box = box # top left bottom right
-        self.conf = conf # confidence of object
-        self.local = None
-
-    def __eq__(self, __o: object) -> bool:
-        return self.track_id == __o.track_id
+        self.box         = box            # top left bottom right
+        self.conf        = round(conf, 3)           # confidence of object
+        self.local       = None
     
-    def overlap_with(self, object, thres=0.5) -> float:
+    def overlap_with(self, object_) -> float:
         # Compute S area 2 boxes
-        S_self = (self.box.br.x - self.box.tl.x) * (self.box.br.y - self.box.tl.y)
-        S_object = (object.box.br.x - object.box.tl.x)*(object.box.br.y - object.box.tl.y)
+        S_self = (self.box.br.x-self.box.tl.x) * (self.box.br.y-self.box.tl.y)
+        S_object = (object_.box.br.x-object_.box.tl.x) * (object_.box.br.y-object_.box.tl.y)
         # Compute coor overlap area
-        xx = max(self.box.tl.x, object.box.tl.x)
-        yy = max(self.box.tl.y, object.box.tl.y)
-        aa = min(self.box.br.x, object.box.br.x)
-        bb = min(self.box.br.y, object.box.br.y)
+        xx = max(self.box.tl.x, object_.box.tl.x)
+        yy = max(self.box.tl.y, object_.box.tl.y)
+        aa = min(self.box.br.x, object_.box.br.x)
+        bb = min(self.box.br.y, object_.box.br.y)
         # Compute S overlap area
         w = max(0, aa-xx)
         h = max(0, bb-yy)
@@ -120,6 +119,7 @@ class Object:
         union_area = S_self + S_object - intersection_area
         Iou = intersection_area/union_area
         return Iou
+    
     
     def draw_box(self, image:np.array, color=COLOR.blue, thickness=2, label:str=''):
         cv2.rectangle(image,
@@ -140,6 +140,17 @@ class Object:
 class Item(Object):
     def __init__(self, track_id, id_object, name_object, box: Box, conf) -> None:
         super().__init__(track_id, id_object, name_object, box, conf)
+        self.cnt_in_area_detect = 0
+
+    def inside(self, area:Polygon) -> bool:
+        point_1 = copy.deepcopy(self.box.tl)
+        point_2 = Point(x=self.box.br.x, y=self.box.tl.y)
+        point_3 = copy.deepcopy(self.box.br)
+        point_4 = Point(x=self.box.tl.x, y=self.box.br.y)
+        return 2 < point_1.inside(area)+point_2.inside(area)+point_3.inside(area)+point_4.inside(area) 
+
+    def __eq__(self, __value: object) -> bool:
+        return self.track_id == __value.track_id
 
 
 class Hand(Object):
@@ -151,21 +162,19 @@ class Hand(Object):
         iou_score = self.overlap_with(item)
         return True if iou_score >= thres else False
 
-
-class Human(Object):
+class Person(Object):
     def __init__(self, track_id, id_object, name_object, box: Box, conf) -> None:
-        super().__init__(id, id_object, name_object, box, conf)
-        self.track_id       = track_id
-        self.id_object      = None
+        super().__init__(track_id, id_object, name_object, box, conf)
         self.left_hand_kp   = []
         self.right_hand_kp  = []
         self.left_leg_kp    = []
         self.right_leg_kp   = []
+
         self.item_holding   = []
+        self.item_paid     = []
         self.hold_item_flag = True if len(self.item_holding)>0 else False 
-        self.flag_in_selection_area = False
-        self.flag_hand_over_line    = False
-        self.cnt_hand_touch_item    = 0
+
+        self.in_shelve              = False
         self.payment_flag           = False
         self.cnt_in_area_pay        = 0
         self.paid                   = False
@@ -174,7 +183,7 @@ class Human(Object):
         '''
         human stand in area and not?
         '''
-        cen_point_2_leg = Point(x=(self.left_leg_kp[0].x+self.right_leg_kp[0].x)//2, y=(self.left_leg_kp[0].y+self.right_leg_kp[0].y)//2)
+        cen_point_2_leg = Point(x=(self.box.tl.x+self.box.br.x)//2, y=self.box.br.y-random.randint(4, 10))
         return cen_point_2_leg.inside(area) 
     
     def hold(self, item:Item, thres:float) -> List[Item]:
@@ -189,7 +198,7 @@ class Human(Object):
         return item_holdings
 
     def draw_box(self, image: np.array, color=COLOR.blue, thickness=2, label: str = ''):
-        const_edge_len = 50
+        const_edge_len = 60
         # top left
         cv2.line(image, 
                 (self.box.tl.x, self.box.tl.y), 
@@ -210,16 +219,42 @@ class Human(Object):
                 color, thickness) 
         # visual Label
         cv2.putText(image, label,
-                    (self.box.tl.x, self.box.tl.y-15),
+                    (self.box.tl.x+10, self.box.tl.y+30),
                     fontScale = 0.8,
                     color=color,
                     thickness=thickness,
                     fontFace=cv2.LINE_AA
                     )
         
+    def detect_items_around_hand(self, model_item, img_org, ratio_box_det:list, ratio_distance_hand:float) -> List:
+        dets = []
+        wid_box, hei_box = ratio_box_det[0]*img_org.shape[1], ratio_box_det[1]*img_org.shape[0]
+        all_kps_hand = self.left_hand_kp + self.right_hand_kp
+        # if len(all_kps_hand) > 1:
+        #     dis_2hands = math.sqrt((self.left_hand_kp[0].x-self.right_hand_kp[0].x)**2 + (self.left_hand_kp[0].y-self.right_hand_kp[0].y)**2)
+        #     height_person = math.sqrt((self.box.br.x-self.box.tl.x)**2 + (self.box.br.y-self.box.tl.y)**2)
+        #     if dis_2hands < height_person*ratio_distance_hand:
+        #         all_kps_hand = [all_kps_hand[0]]
+
+        # for kp_hand in all_kps_hand:
+        if len(all_kps_hand):
+            kp_hand = all_kps_hand[0]
+            box_det = [max(0, kp_hand.x-wid_box//2), max(0, kp_hand.y-hei_box//2),                                                   # top_left
+                        min(img_org.shape[1], kp_hand.x+wid_box//2), min(img_org.shape[0], kp_hand.y+hei_box//2)]                    # bot_right
+            box_det = list(map(int, box_det))
+            img_det = img_org[box_det[1]:box_det[3], box_det[0]:box_det[2]]
+            # print(f"{self.track_id}---------{kp_hand.x}  { kp_hand.y}      {box_det}                     {img_org.shape}")
+            # cv2.imwrite(f"debug/debug_{str(img_org.shape[1])}.jpg", img_det)
+            det = model_item.detect(img_det)
+            for each in det[0]:
+                dets.append(each)
+        return dets
+    
+    def __eq__(self, __value: object) -> bool:
+        return self.track_id == __value.track_id
 
 class Frame:
-    def __init__(self, id, img, ratio) -> None:
+    def __init__(self, id_, img) -> None:
         if isinstance(img, str):
             self.path = img
             self.name = os.path.basename(img)
@@ -228,27 +263,17 @@ class Frame:
             self.img  = img
             self.path = None
             self.name = None
-        self.id = id
+        self.id = id_
         self.shape   = self.img.shape
         self.width   = self.shape[1]
         self.height  = self.shape[0]
         self.channel = self.shape[2] if len(self.shape) > 2 else None
-        self.ratio   = ratio
-        self.humans  = []
-        self.items   = []
     
-    def has_area(self, ratio_points:Tuple) -> Polygon:
-        real_point_obj = []
-        for each in ratio_points:
-            x_real = each[0] * self.width
-            y_real = each[1] * self.height
-            real_point_obj.append(Point(x=x_real, y=y_real))
-        return Polygon(points=real_point_obj)
-
 
 class KeyPoint(Point):
     def __init__(self, x, y, id_:int, name:str, conf:float, color:tuple, swap:str) -> None:
-        super().__init__(x, y)
+        self.x     = x
+        self.y     = y
         self._id   = id_
         self.name  = name
         self.conf  = conf
@@ -256,10 +281,23 @@ class KeyPoint(Point):
         self.swap  = swap
 
     def in_box(self, box:Box) -> bool:
-        return self.x > box.tl.x and self.y > box.tl.y and self.x < box.br.x and box.br.y
+        return self.x>box.tl.x and self.y>box.tl.y and self.x<box.br.x and self.y<box.br.y
 
 
+class Area:
+    def __init__(self, image, args) -> None:
+        self.img         = image
+        img_h, img_w     = self.img.shape[:2]
+        self.shelve      = Polygon([[x*img_w, y*img_h] for x, y  in args['shelve']])
+        self.line_shelve = Polygon([[x*img_w, y*img_h] for x, y  in args['line_shelve']])
+        self.payment     = Polygon([[x*img_w, y*img_h] for x, y  in args['payment']])
+        self.item_detect = Polygon([[x*img_w, y*img_h] for x, y  in args['item_detect']])
         
-# if __name__ == "__main__":
-    # pass
-    
+    def draw(self):
+        self.shelve.draw_box(self.img, COLOR.red, 1, f"shelve")
+        self.line_shelve.draw_box(self.img, COLOR.pink, 1, f"line_shelve")
+        self.payment.draw_box(self.img, COLOR.green, 1, f"payment")
+        self.item_detect.draw_box(self.img, COLOR.green, 1, f"item_detect")
+
+
+

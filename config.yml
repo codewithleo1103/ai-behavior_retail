@@ -1,7 +1,40 @@
 # Configuration for yolov8 item detection
 project_name: Behavior retail
+max_queue: 3
+
+area:
+  # Area coordinates is the ratio of that point on the image to the real coordinates
+  # Coordinate formated ratio: ((tl), (tr), (br), (bl))
+  shelve: [[0.359, 0.0333], [0.442, 0.1132], [0.562, 0.689], [0.363, 0.6981]]
+  # shelve:      [[0.309, 0.0333], [0.517, 0.131], [0.6037, 0.580], [0.313, 0.6981]]
+  line_shelve: [[0.368, 0], [0.498, 0.687]]
+  payment:     [[0.565, 0.611], [0.770, 0.604], [0.883, 0.989], [0.663, 0.983]]
+  item_detect: [[0.559, 0.240], [0.725, 0.202], [0.71, 0.5], [0.598, 0.555]]
+
+person_detection:
+  ex_onnx: False
+  weight: ./models/person_weight/yolov8m.pt
+  categories:
+    - person
+  conf: 0.6
+  iou: 0.45
+  agnostic_nms: False
+
+# Configuration for person tracking
+person_tracking:
+  input_size: [1520, 2688]        # format height, width
+  track_thresh: 0.5               # tracking confidence threshold
+  track_buffer: 30                # the frames for keep lost tracks
+  match_thresh: 0.8               # matching threshold for tracking
+  frame_rate: 30
+  aspect_ratio_thresh: 1.6        # threshold for filtering out boxes of which aspect ratio are above the given value
+  min_box_area: 10                # filter out tiny boxes
+  mot20: False                    # test mot20
+
+
 item_detection:
-  weight: ./models/weights_ai_action/best.pt
+  ex_onnx: False
+  weight: ./models/weights_ai_action/weights_m/best.pt
   categories:
     - dark_noodles
     - g7
@@ -14,35 +47,54 @@ item_detection:
   conf: 0.7
   iou: 0.45
   agnostic_nms: True
+  ratio_box_det: [0.2, 0.3]
+
+item_tracking:
+  input_size: [1520, 2688]        # format height, width
+  track_thresh: 0.5               # tracking confidence threshold
+  track_buffer: 30                # the frames for keep lost tracks
+  match_thresh: 0.8               # matching threshold for tracking
+  frame_rate: 100
+  aspect_ratio_thresh: 2.0        # threshold for filtering out boxes of which aspect ratio are above the given value
+  min_box_area: 10                # filter out tiny boxes
+  mot20: False                    # test mot20
+
+
+
+behavior:
+  num_frame_ignore: 10
+  num_frame_process: 15
+  ratio_frame_to_hold_item: 0.5
+  # ratio_dis_2hands: 0.3        # ratio with height of person
 
 
 # Configuration for human pose estimation
 pose_detection:
   weight: ./models/person_weight/checkpoint_iter_370000.pth
   smooth: 1
+  stride: 8
+  upsample_ratio: 1
+  height_size: 256
+  delay: 1
+  num_kps: 18
+  pose_left_hand: [7]
+  pose_right_hand: [4]
+  pose_left_foot: [13]
+  pose_right_foot: [10]
+  bias_dis: 10
 
-# Configuration for person tracking
-person_tracking:
-  input_size: (800, 1440)         # input size image in tracker
-  track_thresh: 0.5               # tracking confidence threshold
-  track_buffer: 30                # the frames for keep lost tracks
-  match_thresh: 0.9               # matching threshold for tracking
-  aspect_ratio_thresh: 1.6        # threshold for filtering out boxes of which aspect ratio are above the given value
-  min_box_area: 10                # filter out tiny boxes
-  mot20: False                    # test mot20
 
 # Configuration visualization
 visualization:
   area: True
-  person: False
-  keypoint: False
-  item: False
+  person: True
+  keypoint: True
+  item: True
 
-
+# Configuration debug
 debug:                  # if save begin record video
-  save_result:  ./runs
+  save_result: ./runs
   log_txt: True
-  fourcc: MJPG          # output video codec (verify ffmpeg support)
   fps: 25
-
-  
+  video_in: False
+  video_out: True
