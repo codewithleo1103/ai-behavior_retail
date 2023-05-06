@@ -1,6 +1,5 @@
 import cv2
 import copy
-import yaml
 import numpy as np
 import time
 import argparse
@@ -10,15 +9,16 @@ import datetime
 import logging
 from threading import Thread, Lock
 from queue import Queue
+import ipdb
 
 from __init__ import (config, area_cf, person_track_cf, person_detect_cf, pose_cf, 
                       item_detect_cf, item_track_cf, behavior_cf, debug_cf, visual_cf)
-from utils.utils import get_monitor_size, convert_boxobject2nparr, filter_object, CLASSES, COLOR
+from utils.utils import get_monitor_size, convert_boxobject2nparr, filter_object, CLASSES, COLOR, visualize_payment
 from utils import logger
 
 from predictor import PoseWithMobileNetDetector, ItemDetector, PersonDetector
 from behavior import Behavior
-from detector.models.with_mobilenet import PoseEstimationWithMobileNet
+# from detector.models.with_mobilenet import PoseEstimationWithMobileNet
 from ultralytics import YOLO
 from objects import Person, Item, Point, Box, Area, Frame
 
@@ -30,8 +30,8 @@ def make_parser():
     parser = argparse.ArgumentParser("Behavior retail")
     #camera
     parser.add_argument("--input_path", action="store", type=str, default=0)
-    parser.add_argument("--show", default=False, action="store_true")
-    parser.add_argument("--debug", default=False, action="store_true")
+    parser.add_argument("--show", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     return parser
 
 class Processor():
@@ -40,8 +40,9 @@ class Processor():
         self.args = make_parser().parse_args() 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.logger = logger.set_logger(level=logging.INFO)
-        
-        self.logger.info('Loading model yolov8s person detection ...')
+        self.logger.info(f"Device: {self.device}")
+
+        self.logger.info('Loading model yolov7 person detection ...')
         self.person_detector = PersonDetector(model=YOLO,
                                 weight=person_detect_cf['weight'],
                                 device=self.device,
@@ -60,7 +61,7 @@ class Processor():
         #                                    upsample_ratio=pose_cf['upsample_ratio'],
         #                                    delay=pose_cf['delay'])
         
-        self.logger.info('Loading model yolov8 item detection ...')
+        self.logger.info('Loading model yolov7 item detection ...')
         self.item_detector = ItemDetector(model=YOLO,
                               weight=item_detect_cf['weight'],
                               device=self.device,
@@ -91,6 +92,7 @@ class Processor():
         self.writer_in = None
         self.writer_out = None
         self.area = None
+        self.thread_input = None
 
     def read_video(self):
         cap = cv2.VideoCapture(self.args.input_path) 
@@ -115,7 +117,8 @@ class Processor():
             if img is None:
                 self.logger.info(f"No frame to read from: {self.args.input_path}")
                 time.sleep(3)
-                os._exit(1)
+                os._exit(1) 
+            
             while self.frame_queue.full():
                 time.sleep(0.02)
             if ret:
@@ -134,10 +137,15 @@ class Processor():
             img = copy.deepcopy(org_frame)
             frame = Frame(frame_id, img)
             self.area = Area(frame.img, area_cf)
+            if visual_cf['area']:
+                self.area.draw()
 
+            # Detect person
             persons, fps_person = self.person_detector.detect(frame.img)
             if len(persons):
                 person_boxes = convert_boxobject2nparr(persons)
+
+                # Tracking person
                 online_targets = self.person_tracker.update(person_boxes, frame.shape[:2], person_track_cf['input_size'])
                 person_trackers = filter_object(online_targets, person_track_cf['min_box_area'], person_track_cf['aspect_ratio_thresh'])
             else:
@@ -147,7 +155,7 @@ class Processor():
                           br=Point(x=min(frame.width, tracker.tlbr[2]), y=min(frame.height, tracker.tlbr[3])))
                 person = Person(track_id    = tracker.track_id,
                                 id_object   = -1,
-                                name_object = CLASSES[-1],
+                                name_object = CLASSES[-1][0],
                                 box         = box,
                                 conf        = tracker.score)
                 
@@ -159,14 +167,24 @@ class Processor():
                     person.local = 'item_detect'
                 elif person.stand_in(self.area.payment):
                     person.local = 'payment'
+                else:
+                    person.local = 'overside'
                     
                 if person in log_person_results:
                     index = log_person_results.index(person)
+                    # log_person_results[index] = person
                     log_person_results[index].box  = person.box
                     log_person_results[index].conf  = person.conf
                     log_person_results[index].local = person.local
+                    # print(log_person_results[index].local)
                     if log_person_results[index].local == 'payment':
                         log_person_results[index].item_holding += person.item_holding
+                    # print(f"{log_person_results[index].local}   {log_person_results[index].paid}   {len(log_person_results[index].item_holding)}")
+                    
+       
+                    # if log_person_results[index].local == 'shelve':
+                    #     log_person_results[index].item_holding = []
+                    #     person.cnt_in_area_pay = 0
 
                     if log_person_results[index].in_shelve == False:
                         log_person_results[index].in_shelve = person.in_shelve
@@ -194,9 +212,10 @@ class Processor():
                           br=Point(x=min(frame.width, tracker.tlbr[2]), y=min(frame.height, tracker.tlbr[3])))
                 item = Item(track_id    = tracker.track_id,
                             id_object   = tracker.id_object,
-                            name_object = CLASSES[tracker.id_object],
+                            name_object = CLASSES[tracker.id_object][0],
                             box         = box,
-                            conf        = tracker.score)
+                            conf        = tracker.score,
+                            price       = CLASSES[tracker.id_object][1])
                 if item.inside(self.area.shelve):
                     item.local = 'shelve'
                 elif item.inside(self.area.item_detect):
@@ -215,14 +234,8 @@ class Processor():
             # for item in log_item_results:
             #     print(f"id: {item.track_id}   item: {item.name_object}")
 
-
-            step_1 = self.behavior.get_item(log_person_results, log_item_results, frame)
-            step_2 = self.behavior.to_pay(step_1)
-
-
             sys_end_time = time.time()
             sys_fps = round(1/(sys_end_time - sys_start_time), 2)
-            # SET UP FRAME:
             cv2.putText(frame.img, f"FPS: {sys_fps}",
                     (int(1/20*frame.width), int(1/17*frame.height)),
                     fontScale = 2,
@@ -230,23 +243,35 @@ class Processor():
                     thickness=2,
                     fontFace=cv2.LINE_AA
                     )
-            if visual_cf['area']:
-                    self.area.draw()
+            result_step_1 = self.behavior.get_item(log_person_results, log_item_results, frame)
+            result_step_2 = self.behavior.to_pay(result_step_1)
+
+            # visual_thanh toan
+            payment_frame = np.zeros([1520, 1080//2, 3], dtype=np.uint8)
+            payment_frame[:, :] = [255, 255, 255]
+            visualize_payment(payment_frame, result_step_2)
+            # cv2.namedWindow("Retail", cv2.WINDOW_KEEPRATIO)
+            # retail_frame = cv2.resize(frame, (1920*3//4, 1080))
+            # visualize_payment(payment_frame, payment_storage)
+            final_frame = np.concatenate((frame.img, payment_frame), 1)
+
+            # SET UP FRAME:
             if self.args.debug:
                 if debug_cf['video_in']:
                     self.writer_in.write(org_frame) 
                 if debug_cf['video_out']:
-                    self.writer_out.write(frame.img) 
+                    self.writer_out.write(final_frame) 
             if self.args.show:
-                frame.img = cv2.resize(frame.img, (int(self.mo_wid_save*1/3), int(self.mo_hei_save*2/3)), interpolation=cv2.INTER_AREA)
-                cv2.imshow("Result", frame.img)
+                final_frame = cv2.resize(final_frame, (int(self.mo_wid_save*2/3), int(self.mo_hei_save*2/3)), interpolation=cv2.INTER_AREA)
+                # img = cv2.resize(final_frame, (int(1020*2/3), int(1080*2/3)), interpolation=cv2.INTER_AREA)
+                # print(frame.shape)
+                # import ipdb; ipdb.set_trace()
+                # cv2.imwrite(f"debug/test_img_{frame_id}.jpg", frame.img)
+                cv2.imshow("Result", final_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
-                
+                # cv2.destroyAllWindows()
             frame_id += 1
-
-
-            
 
 if __name__ == "__main__":
     processor = Processor()

@@ -5,9 +5,9 @@ import numpy as np
 import copy
 from typing import List
 from detector.modules.load_state import load_state
-from detector.modules.keypoints import extract_keypoints, group_keypoints
-from detector.modules.pose import Pose
-from detector.val import normalize, pad_width
+# from detector.modules.keypoints import extract_keypoints, group_keypoints
+# from detector.modules.pose import Pose
+# from detector.val import normalize, pad_width
 
 from utils.utils import COLOR, CLASSES, xywh_to_xyxy
 
@@ -70,7 +70,7 @@ class ItemDetector(Detector):
         self.classes      = []
         for obj in classes:
             for id_obj, name_obj in CLASSES.items():
-                if name_obj == obj:
+                if name_obj[0] == obj:
                     self.classes.append(id_obj)
                     break
         self.conf         = conf
@@ -104,9 +104,10 @@ class ItemDetector(Detector):
                           br=Point(x=box[2], y=box[3]))
                 item = Item(track_id=None,
                             id_object=int(clas),
-                            name_object=CLASSES[int(clas)],
+                            name_object=CLASSES[int(clas)][0],
                             box=bbox,
-                            conf=conf)
+                            conf=conf,
+                            price=CLASSES[int(clas)][0][1])
                 dets_final.append(item)
         return dets_final
 
@@ -129,7 +130,7 @@ class PersonDetector(ItemDetector):
                           br=Point(x=box[2], y=box[3]))
                 person = Person(track_id=None,
                                 id_object=-1,
-                                name_object=CLASSES[-1],
+                                name_object=CLASSES[-1][0],
                                 box=bbox,
                                 conf=conf)
                 dets_final.append(person)

@@ -13,7 +13,7 @@ area:
 
 person_detection:
   ex_onnx: False
-  weight: ./models/person_weight/yolov8m.pt
+  weight: ./models/person_weight/yolov7.pt
   categories:
     - person
   conf: 0.6
@@ -64,7 +64,8 @@ item_tracking:
 behavior:
   num_frame_ignore: 10
   num_frame_process: 15
-  ratio_frame_to_hold_item: 0.5
+  item_in_detect_area: 0.5
+  ratio_frame_to_hold_item: 50
   # ratio_dis_2hands: 0.3        # ratio with height of person
 
 
@@ -97,4 +98,4 @@ debug:                  # if save begin record video
   log_txt: True
   fps: 25
   video_in: False
-  video_out: True
+  video_out: False

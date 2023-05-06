@@ -138,9 +138,10 @@ class Object:
 
 
 class Item(Object):
-    def __init__(self, track_id, id_object, name_object, box: Box, conf) -> None:
+    def __init__(self, track_id, id_object, name_object, box: Box, conf, price) -> None:
         super().__init__(track_id, id_object, name_object, box, conf)
         self.cnt_in_area_detect = 0
+        self.price = price
 
     def inside(self, area:Polygon) -> bool:
         point_1 = copy.deepcopy(self.box.tl)
@@ -225,6 +226,14 @@ class Person(Object):
                     thickness=thickness,
                     fontFace=cv2.LINE_AA
                     )
+        
+
+    def compute_sum_item_price(self):
+        sum_price = 0
+        if len(self.item_paid):
+            for item in self.item_paid:
+                sum_price += item.price
+        return sum_price
         
     def detect_items_around_hand(self, model_item, img_org, ratio_box_det:list, ratio_distance_hand:float) -> List:
         dets = []

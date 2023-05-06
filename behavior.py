@@ -1,7 +1,8 @@
 from typing import List 
 from objects import Area
 from __init__ import behavior_cf, area_cf
-from queue import Queue
+import copy
+import ipdb
 
 
 
@@ -30,13 +31,13 @@ class Behavior:
         if len(self.persons_process):
             for persons, items, frame in zip(self.persons_process, self.items_process, self.frames_process):
                 for person in persons:
-                    print(f"id: {person.track_id} ======== holding: {len(person.item_holding)}")
+                    # print(f"id: {person.track_id} ======== holding: {len(person.item_holding)}")
                     if person.in_shelve and person.local=='item_detect':
                         for item in items:
                             if item.inside(Area(frame.img, area_cf).item_detect) and \
                                                     item.overlap_with(person) < 0.6 and item not in person.item_holding:
                                 item.cnt_in_area_detect += 1
-                                if item.cnt_in_area_detect >= behavior_cf['ratio_frame_to_hold_item']* self.num_frame_process:
+                                if item.cnt_in_area_detect >= behavior_cf['item_in_detect_area']*self.num_frame_process:
                                     person.item_holding.append(item)
                                     break
                     results.append((frame, person))
@@ -47,18 +48,43 @@ class Behavior:
         result = []
         if len(result_holding):
             for frame, person in result_holding:
-                if person.stand_in(Area(frame.img, area_cf).payment):
+                if person.stand_in(Area(frame.img, area_cf).payment) and len(person.item_holding):
                     person.cnt_in_area_pay += 1
+                    # print(f"{person.cnt_in_area_pay} ============================ {behavior_cf['ratio_frame_to_hold_item']*self.num_frame_process}    {behavior_cf['ratio_frame_to_hold_item']}")
                     if person.cnt_in_area_pay >= behavior_cf['ratio_frame_to_hold_item']*self.num_frame_process:
                         person.in_shelve = False
                         person.paid      = True
+                        # person.item_paid = copy.deepcopy(person.item_holding)
+                        # person.item_holding = []
                         for item in person.item_holding:
                             if item in person.item_holding:  
                                 person.item_holding.remove(item)
                                 person.item_paid.append(item)
-                # if len(person.item_holding) == 2:
-                #     import ipdb; ipdb.set_trace()
-                print(f"id: {person.track_id}     hold: {len(person.item_holding)}     paid: {len(person.item_paid)}")
+                else:
+                    person.cnt_in_area_pay = 0
+                    # print(len(person.item_holding))
+                    # if person.stand_in(Area(frame.img, area_cf).payment) and person.paid:
+                    #     # person.in_shelve = True
+                    #     # person.paid      = False
+                    #     person.item_holding = []
+
+                if person in result:
+                    for old_person in result:
+                        if old_person == person:
+                            if len(person.item_paid) != len(old_person.item_paid):
+                                old_person.item_paid = copy.deepcopy(person.item_paid)
+                                old_person.item_holding = copy.deepcopy(person.item_holding)
+                else:
+                    result.append(person)
+        return result
+        # print(f"len result: {len(result)}")
+        # for each in result:
+        #     if each.track_id == 2:
+        #         print(len(each.item_paid))
+
+
+
+        
 
 
                     # print(f"frame: {frame.id}    person id: {person.track_id}      len items: {len(person.item_holding)}")

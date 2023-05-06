@@ -2,6 +2,7 @@ import tkinter as tk
 import cv2
 from typing import List
 import numpy as np
+import copy
 
 # from object import Person
 
@@ -15,15 +16,15 @@ class COLOR:
 
 
 CLASSES = {
-    -1: 'person',
-    0: 'dark_noodles',
-    1: 'g7',
-    2: 'haohao',
-    3: 'modern',
-    4: 'nabati',
-    5: 'nescafe',
-    6: 'oreo',
-    7: 'passiona',
+    -1: ['person', -1],
+    0: ['dark_noodles', 20000],
+    1: ['g7', 30000],
+    2: ['haohao', 10000],
+    3: ['modern', 10000],
+    4: ['nabati', 15000],
+    5: ['nescafe', 30000],
+    6: ['oreo', 30000],
+    7: ['passiona', 100000],
 }    
 
 
@@ -63,3 +64,31 @@ def xywh_to_xyxy(img, bbox):
     x2 = x2 if x2 <= img.shape[1] else img.shape[1]
     y2 = y2 if y2 <= img.shape[0] else img.shape[0]
     return x1, y1, x2, y2
+
+
+def visualize_payment(image, result:list):
+    title = "*****PAYMENT*****"
+    x_start_person = 10
+    y_start_person = 30
+    cv2.putText(image,title,(55,y_start_person),cv2.FONT_HERSHEY_TRIPLEX, 1, COLOR.red, 1)
+    x_start_item = x_start_person + 30
+    y_start_person += 40
+    for person in result:
+        cv2.putText(image,f"person {person.track_id}",(x_start_person,y_start_person),
+                    cv2.FONT_HERSHEY_TRIPLEX, 1, (111, 0, 5), 1)
+        y_start_item = y_start_person + 30
+        if len(person.item_paid):
+            for item in person.item_paid:
+                cv2.putText(image,f"+ {item.name_object}: {item.price} VND",(x_start_item,y_start_item),
+                        cv2.FONT_HERSHEY_TRIPLEX, 1, COLOR.blue, 1)
+                y_start_item += 40
+
+            cv2.putText(image,f"Total money:  {person.compute_sum_item_price()} VND",(x_start_item,y_start_item),
+                        cv2.FONT_HERSHEY_TRIPLEX, 1, COLOR.red, 1)
+        y_start_item += 20       
+        cv2.putText(image,f"______________________________________________",(x_start_item,y_start_item),
+                    cv2.FONT_HERSHEY_TRIPLEX, 1, COLOR.pink, 1)
+        y_start_item += 10
+
+        y_start_person = y_start_item + 40
+    
